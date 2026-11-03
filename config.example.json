@@ -17,5 +17,6 @@
   "max_results_per_query": 10,
   "output_format": "xlsx",
   "email_provider": "gmail",
+  "ai_provider": "none",
   "ai_model": "claude-haiku-4-5"
 }

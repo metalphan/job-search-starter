@@ -30,7 +30,8 @@ Copy `config.example.json` to `config.json`, then edit it. The example role is a
 | `max_queries`, `max_results_per_query` | Per-run cost limits. Defaults: 12 queries, 10 results each. Extra queries beyond the limit are omitted. |
 | `output_format` | `xlsx` for formatted columns, filters and a frozen header; `csv` for a portable table. History is JSON, so changing format does not reset deduplication. |
 | `email_provider` | `gmail` or `resend`; explicit selection avoids accidentally sending from a fallback account. |
-| `ai_model` | Anthropic model ID used only when `ANTHROPIC_API_KEY` is set. |
+| `ai_provider` | `none`, `anthropic`, `openai`, `gemini`, or `xai`. `none` is the default and makes no AI calls. |
+| `ai_model` | A model ID supported by the selected provider's API. The example contains an Anthropic model ID; change it when choosing another provider. |
 
 Role, arrangement, office-location, exclusion and salary checks run in code. AI additionally evaluates remote jurisdiction and whether a page is one open job. Preferences are not strict skill/seniority/industry filters. Read the actual posting before applying.
 
@@ -61,19 +62,33 @@ Query order is **custom `queries` first, generated role searches second, company
 
 ## Services and credentials
 
-Search uses [Tavily](https://www.tavily.com/); create your own account and API key. Optional [Anthropic](https://console.anthropic.com/) enrichment extracts employer, salary and eligibility details. Without it, the app uses conservative title/location keywords, leaves salary unknown, and cannot reliably distinguish job listings from search pages. Set `include_unknown_salary=false` with a salary minimum only when AI is enabled, otherwise unknown salaries are all excluded.
+Search uses [Tavily](https://www.tavily.com/); create your own account and API key. Optional AI enrichment extracts employer, salary and eligibility details. Without it, the app uses conservative title/location keywords, leaves salary unknown, and cannot reliably distinguish job listings from search pages. Set `include_unknown_salary=false` with a salary minimum only when AI is enabled, otherwise unknown salaries are all excluded.
 
-Searches and AI calls may cost money. Preview also uses those services. Your queries go to Tavily; when AI is enabled, the profile and retrieved posting text go to Anthropic. Email attachments go through the selected email provider.
+Searches and AI calls may cost money. Preview also uses those services. Your queries go to Tavily; when AI is enabled, the profile and retrieved posting text go to your chosen AI provider. Email attachments go through the selected email provider.
+
+### Choose an AI provider
+
+The `ai_provider` setting controls which service reads candidate postings. Pick **one**, set a compatible `ai_model`, and add only that provider's API key as a local environment variable or GitHub Actions secret. API access and billing are separate from consumer chat subscriptions (for example, a ChatGPT subscription does not itself supply an OpenAI API key). The provider receives the candidate profile, settings, and posting text. The code checks the returned JSON and applies its own arrangement, location, and salary filters before including a job.
+
+| `ai_provider` | Key/secret | Example `ai_model` | Setup and model pricing |
+| --- | --- | --- | --- |
+| `none` | None | Ignored | No AI bill; keyword checks only. |
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` | [Anthropic API](https://console.anthropic.com/) and [pricing](https://www.anthropic.com/pricing). |
+| `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` | [OpenAI API quickstart](https://developers.openai.com/api/docs/quickstart) and [pricing](https://developers.openai.com/api/docs/pricing). |
+| `gemini` | `GEMINI_API_KEY` | `gemini-2.5-flash` | [Gemini API keys](https://ai.google.dev/gemini-api/docs/api-key) and [pricing](https://ai.google.dev/gemini-api/docs/pricing). |
+| `xai` | `XAI_API_KEY` | `grok-4.7` | [xAI API](https://docs.x.ai/developers/rest-api-reference/inference) and [pricing](https://docs.x.ai/developers/models). |
+
+These model IDs are examples, not promises of access or a particular price. Check the provider's current model list, JSON-output support, quotas and pricing before enabling it. The OpenAI and xAI adapters use their chat-completions JSON mode; Gemini uses `generateContent` JSON mode; Anthropic uses its Messages API. Provider errors stop the run and do not silently switch to a different paid service.
 
 ### What a weekly search costs
 
 Prices and included allowances below were checked **November 2026**; verify the linked pricing pages before enabling a paid plan. The default configuration makes at most 12 Tavily searches per run. This script requests **advanced** search, which costs 2 Tavily credits per query. A full run therefore uses at most 24 credits; four weekly runs use at most 96 credits. Tavily currently includes 1,000 credits per month on its free plan. At its pay-as-you-go rate of $0.008 per credit, those 96 credits would cost **$0.77** if they were billed rather than covered by the allowance. Each preview is another search run and can consume up to 24 credits. See [Tavily credits and pricing](https://docs.tavily.com/documentation/api-credits) and [Tavily plans](https://www.tavily.com/pricing).
 
-Anthropic is **optional**. Without `ANTHROPIC_API_KEY`, the script makes no Anthropic calls, so there is no AI charge. With the default `claude-haiku-4-5`, it can call the model once for every distinct search result that has a matching title and passes basic exclusions, even if the result is later rejected. The [Haiku 4.5 API price](https://www.anthropic.com/news/claude-haiku-4-5) is $1 per million input tokens plus $5 per million output tokens. As an illustration, 480 such calls in a month averaging 4,000 input and 200 output tokens would cost about **$2.40**. Actual usage can differ greatly with result volume and posting length; check the Anthropic usage dashboard and set a spending limit in your account if desired.
+AI is **optional**. With `ai_provider` set to `none`, the script makes no AI calls and has no AI charge. With AI enabled, it can call the chosen model once for every distinct search result that has a matching title and passes basic exclusions, even if the result is later rejected. For the example `claude-haiku-4-5` model, the [Anthropic API price](https://www.anthropic.com/news/claude-haiku-4-5) is $1 per million input tokens plus $5 per million output tokens. As an illustration, 480 such calls in a month averaging 4,000 input and 200 output tokens would cost about **$2.40**. OpenAI, Gemini and xAI costs depend on the specific model and their current pricing; do not reuse the Anthropic estimate for them. Actual usage can differ greatly with result volume and posting length. Check the selected provider's usage dashboard and spending limits.
 
 The script sends one email per successful search. [Resend's free plan](https://resend.com/pricing?product=transactional) currently includes 3,000 transactional emails per month, although you must control and verify a sending domain, which may have its own registration cost. Gmail delivery uses your Gmail account and avoids buying a domain for Resend; account policy and sending limits still apply. [GitHub Actions](https://docs.github.com/en/billing/concepts/product-billing/github-actions) provides an included usage allowance for private repositories, with charges possible beyond it depending on your account and billing settings.
 
-For a low-cost start, leave `ANTHROPIC_API_KEY` unset, keep `max_queries` small, run one preview, and inspect your provider usage before scheduling weekly searches. There is no subscription charge from this repository itself.
+For a low-cost start, keep `ai_provider` as `none`, keep `max_queries` small, run one preview, and inspect your provider usage before scheduling weekly searches. There is no subscription charge from this repository itself.
 
 Choose one delivery method:
 
@@ -103,7 +118,7 @@ $env:TAVILY_API_KEY = 'your-key'
 $env:EMAIL_TO = 'your-address'
 $env:GMAIL_USER = 'your-gmail-address'
 $env:GMAIL_APP_PASSWORD = 'your-app-password'
-# Optional:
+# Optional: first set ai_provider and ai_model in config.json.
 $env:ANTHROPIC_API_KEY = 'your-key'
 ```
 
@@ -128,7 +143,7 @@ In your **private** copy, open **Settings → Secrets and variables → Actions*
 | `EMAIL_TO` | Your delivery address. |
 | `GMAIL_USER`, `GMAIL_APP_PASSWORD` | For Gmail delivery. |
 | `RESEND_API_KEY`, `RESEND_FROM` | For Resend delivery instead. |
-| `ANTHROPIC_API_KEY` | Optional AI enrichment key. |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, or `XAI_API_KEY` | Add only the key for your selected `ai_provider`. No AI key is needed for `none`. |
 
 Open **Actions → Job Search → Run workflow**, first choosing `preview`. Download the `job-results` artifact and inspect it. Then choose `test-email`, and finally `search` to test the full flow.
 

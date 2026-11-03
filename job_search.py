@@ -12,6 +12,7 @@ import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from urllib.request import Request, urlopen
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parent
 FIELDS = ['title', 'firm', 'location', 'arrangement', 'salary', 'fit_notes', 'url']
@@ -30,6 +31,8 @@ def load_config(path):
         raise ValueError('output_format must be xlsx or csv')
     if c.get('email_provider') not in ('gmail', 'resend'):
         raise ValueError('email_provider must be gmail or resend')
+    if c.get('ai_provider') not in ('none', 'anthropic', 'openai', 'gemini', 'xai'):
+        raise ValueError('ai_provider must be none, anthropic, openai, gemini, or xai')
     if type(c.get('include_unknown_salary')) is not bool or type(c.get('include_unknown_location')) is not bool:
         raise ValueError('include_unknown_salary and include_unknown_location must be booleans')
     floor = c.get('minimum_annual_salary')
@@ -38,6 +41,8 @@ def load_config(path):
     for k in ('candidate_profile', 'remote_region', 'salary_currency', 'ai_model'):
         if not isinstance(c.get(k), str):
             raise ValueError(f'{k} must be a string')
+    if c['ai_provider'] != 'none' and not c['ai_model'].strip():
+        raise ValueError('ai_model is required when ai_provider is enabled')
     for k, maximum in [('max_queries', 50), ('max_results_per_query', 20)]:
         if type(c.get(k)) is not int or not 1 <= c[k] <= maximum:
             raise ValueError(f'{k} must be an integer from 1 to {maximum}')
@@ -65,6 +70,38 @@ def contains(text, term):
     return bool(re.search(r'(?<!\w)' + re.escape(term.lower()) + r'(?!\w)', text.lower()))
 
 
+def ai_response(provider, model, prompt):
+    """Return provider text. The caller validates the JSON and eligibility fields."""
+    key_name = {'anthropic': 'ANTHROPIC_API_KEY', 'openai': 'OPENAI_API_KEY',
+                'gemini': 'GEMINI_API_KEY', 'xai': 'XAI_API_KEY'}[provider]
+    key = os.environ.get(key_name)
+    if not key:
+        raise ValueError(f'{key_name} is required for ai_provider={provider}')
+    if provider == 'anthropic':
+        from anthropic import Anthropic
+        response = Anthropic(api_key=key).messages.create(
+            model=model, max_tokens=1200, messages=[{'role': 'user', 'content': prompt}])
+        return ''.join(b.text for b in response.content if b.type == 'text')
+    if provider in ('openai', 'xai'):
+        host = 'https://api.openai.com/v1/chat/completions' if provider == 'openai' else 'https://api.x.ai/v1/chat/completions'
+        payload = {'model': model, 'messages': [{'role': 'user', 'content': prompt}],
+                   'response_format': {'type': 'json_object'}}
+        headers = {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'}
+        data = post_json(host, payload, headers)
+        return data['choices'][0]['message']['content']
+    url = 'https://generativelanguage.googleapis.com/v1beta/models/' + quote(model, safe='') + ':generateContent'
+    payload = {'contents': [{'parts': [{'text': prompt}]}],
+               'generationConfig': {'responseMimeType': 'application/json'}}
+    data = post_json(url, payload, {'x-goog-api-key': key, 'Content-Type': 'application/json'})
+    return ''.join(part['text'] for part in data['candidates'][0]['content']['parts'] if 'text' in part)
+
+
+def post_json(url, payload, headers):
+    request = Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
+    with urlopen(request, timeout=60) as response:
+        return json.load(response)
+
+
 def assess(result, c, ai=None):
     title = result.get('title', '')
     text = (result.get('raw_content') or result.get('content') or '')[:16000]
@@ -90,8 +127,7 @@ def assess(result, c, ai=None):
                   'Hard constraints: roles, locations for onsite/hybrid, remote_region for remote, arrangements, exclude_terms. '
                   'Industries, skills and candidate_profile are preferences. Unknown salary/location follow the include_unknown settings. '
                   'Do not reject on salary yet; the program checks that separately.\nSettings:\n' + json.dumps(c) + '\nPosting:\n' + blob)
-        response = ai.messages.create(model=c['ai_model'], max_tokens=1200, messages=[{'role': 'user', 'content': prompt}])
-        answer = ''.join(b.text for b in response.content if b.type == 'text').strip()
+        answer = ai(c['ai_provider'], c['ai_model'], prompt).strip()
         answer = re.sub(r'^```(?:json)?\s*|\s*```$', '', answer)
         d = json.loads(answer)
         if any(type(d.get(k)) is not bool for k in ('eligible', 'is_job_posting', 'is_open')):
@@ -211,10 +247,12 @@ def main(argv=None):
         return
     from tavily import TavilyClient
     client = TavilyClient(api_key=os.environ['TAVILY_API_KEY'])
-    ai = None
-    if os.environ.get('ANTHROPIC_API_KEY'):
-        from anthropic import Anthropic
-        ai = Anthropic()
+    ai = ai_response if c['ai_provider'] != 'none' else None
+    if ai:
+        key_name = {'anthropic': 'ANTHROPIC_API_KEY', 'openai': 'OPENAI_API_KEY',
+                    'gemini': 'GEMINI_API_KEY', 'xai': 'XAI_API_KEY'}[c['ai_provider']]
+        if not os.environ.get(key_name):
+            raise ValueError(f'{key_name} is required for ai_provider={c["ai_provider"]}')
     state_dir, output_dir = ROOT / 'state', ROOT / 'results'
     output_dir.mkdir(exist_ok=True)
     state_path = state_dir / 'history.json'

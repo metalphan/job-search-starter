@@ -41,18 +41,28 @@ class JobSearchTests(unittest.TestCase):
         d = dict(title='Software Engineer', firm='Example', location='New York', arrangement='Hybrid',
                  salary='$90,000–$120,000', fit_notes='Match', eligible=True, is_job_posting=True,
                  is_open=True, annual_salary_max=120000, salary_currency='USD')
-        class AI:
-            def __init__(self):
-                self.messages = self
-            def create(self, **kwargs):
-                return types.SimpleNamespace(content=[types.SimpleNamespace(type='text', text=json.dumps(d))])
-        self.assertIsNotNone(app.assess(self.result, self.c, AI()))
+        ai = lambda provider, model, prompt: json.dumps(d)
+        self.assertIsNotNone(app.assess(self.result, self.c, ai))
         d['annual_salary_max'] = 90000
-        self.assertIsNone(app.assess(self.result, self.c, AI()))
+        self.assertIsNone(app.assess(self.result, self.c, ai))
         d.update(annual_salary_max=120000, salary_currency='CAD')
-        self.assertIsNone(app.assess(self.result, self.c, AI()))
+        self.assertIsNone(app.assess(self.result, self.c, ai))
         d.update(salary_currency='USD', is_open=False)
-        self.assertIsNone(app.assess(self.result, self.c, AI()))
+        self.assertIsNone(app.assess(self.result, self.c, ai))
+
+    def test_provider_requests_and_credentials(self):
+        self.c['ai_provider'] = 'openai'
+        with patch.dict(app.os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                app.ai_response('openai', 'gpt-4o-mini', 'JSON only')
+        with patch.dict(app.os.environ, {'OPENAI_API_KEY': 'test', 'XAI_API_KEY': 'test', 'GEMINI_API_KEY': 'test'}), patch.object(app, 'post_json', return_value={'choices': [{'message': {'content': '{}'}}]}) as post:
+            self.assertEqual(app.ai_response('openai', 'gpt-4o-mini', 'JSON only'), '{}')
+            self.assertIn('api.openai.com', post.call_args.args[0])
+            self.assertEqual(app.ai_response('xai', 'grok-4.7', 'JSON only'), '{}')
+            self.assertIn('api.x.ai', post.call_args.args[0])
+            post.return_value = {'candidates': [{'content': {'parts': [{'text': '{}'}]}}]}
+            self.assertEqual(app.ai_response('gemini', 'gemini-2.5-flash', 'JSON only'), '{}')
+            self.assertIn('generativelanguage.googleapis.com', post.call_args.args[0])
 
     def test_exclusions_and_boundaries(self):
         self.c['exclude_terms'] = ['contract']

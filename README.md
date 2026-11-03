@@ -34,6 +34,31 @@ Copy `config.example.json` to `config.json`, then edit it. The example role is a
 
 Role, arrangement, office-location, exclusion and salary checks run in code. AI additionally evaluates remote jurisdiction and whether a page is one open job. Preferences are not strict skill/seniority/industry filters. Read the actual posting before applying.
 
+### Choose sites and write searches
+
+You **do not need a list of websites** to get started. Leave `company_domains` and `queries` as `[]`; the program creates web searches from your `roles`, `industries`, `locations`, and remote setting. Tavily searches the web and returns matching pages. It is not a direct integration with LinkedIn, Indeed, or a company's applicant system, so coverage and freshness vary. See the [Tavily Search API](https://docs.tavily.com/documentation/api-reference/endpoint/search) for what the provider returns.
+
+To focus on particular employers, make a short list of companies you would genuinely consider. Find each company's official careers page with a normal browser search such as `Example Company careers`; open it and copy **only the host name** from its URL. For `https://careers.example.com/openings`, use `careers.example.com`, without `https://`, `/openings`, or a trailing slash:
+
+```json
+"company_domains": ["careers.example.com"]
+```
+
+The program creates a separate query such as `site:careers.example.com "software engineer" careers jobs` for every domain and role pair. A domain is a search hint, **not** a guarantee the site is indexed or that its jobs are open. If the careers page uses a shared host such as `job-boards.greenhouse.io`, that host also contains other employers. In that case, leave it out of `company_domains` and use a custom query containing the employer's name instead:
+
+```json
+"queries": [
+  "\"Example Company\" \"software engineer\" jobs New York",
+  "\"data analyst\" healthcare remote United States"
+]
+```
+
+The backslashes in this JSON example preserve quote marks within the search text. One query can explore another title, industry, or location without changing hard eligibility rules; add that title to `roles` if you want it accepted. Start with a few broad queries, run a preview, inspect the attached links, then narrow searches that produce noise. For New York, include city/borough aliases in `locations` and decide whether remote work elsewhere in the US is acceptable. The program does not calculate commute distance or guarantee New York state eligibility.
+
+Query order is **custom `queries` first, generated role searches second, company-domain searches third**. `max_queries` caps the total; a long custom list can crowd out company searches. Run `python job_search.py --show-queries` to see the exact planned searches offline, then raise `max_queries` or trim the lists as needed. More queries and advanced searches consume more provider credits.
+
+**Email-sending domains are separate.** `company_domains` names sites to search; it has nothing to do with the sender address. Gmail delivery needs no domain purchase. Resend delivery requires a domain you control and verify with Resend; follow the [Resend domain setup guide](https://resend.com/docs/dashboard/domains/introduction) and set `RESEND_FROM` to an address on that verified domain.
+
 ## Services and credentials
 
 Search uses [Tavily](https://www.tavily.com/); create your own account and API key. Optional [Anthropic](https://console.anthropic.com/) enrichment extracts employer, salary and eligibility details. Without it, the app uses conservative title/location keywords, leaves salary unknown, and cannot reliably distinguish job listings from search pages. Set `include_unknown_salary=false` with a salary minimum only when AI is enabled, otherwise unknown salaries are all excluded.
@@ -58,6 +83,7 @@ pip install -r requirements.txt
 Copy-Item config.example.json config.json
 # Edit config.json before continuing.
 python job_search.py --check
+python job_search.py --show-queries
 ```
 
 Set credentials in the current shell (replace placeholders):

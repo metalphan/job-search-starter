@@ -105,6 +105,11 @@ class JobSearchTests(unittest.TestCase):
         self.c['queries'] = ['explicit query']
         self.assertEqual(app.queries(self.c), ['explicit query'])
 
+    def test_company_domain_query(self):
+        self.c['company_domains'] = ['careers.example.com']
+        self.c['max_queries'] = 12
+        self.assertIn('site:careers.example.com "software engineer" careers jobs', app.queries(self.c))
+
 
 if __name__ == '__main__':
     unittest.main()

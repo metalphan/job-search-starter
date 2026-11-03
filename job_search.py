@@ -48,7 +48,15 @@ def load_config(path):
 
 
 def queries(c):
-    generated = [f'"{role}" jobs {" OR ".join(c["industries"])} {" OR ".join(c["locations"] + (["remote " + c["remote_region"]] if "Remote" in c["arrangements"] else []))}' for role in c['roles']]
+    generated = []
+    for role in c['roles']:
+        terms = [f'"{role}" jobs']
+        if c['industries']:
+            terms.append(' OR '.join(c['industries']))
+        places = c['locations'] + (['remote ' + c['remote_region']] if 'Remote' in c['arrangements'] else [])
+        if places:
+            terms.append(' OR '.join(places))
+        generated.append(' '.join(terms))
     targeted = [f'site:{domain} "{role}" careers jobs' for domain in c['company_domains'] for role in c['roles']]
     return list(dict.fromkeys(c['queries'] + generated + targeted))[:c['max_queries']]
 
@@ -185,11 +193,16 @@ def main(argv=None):
     parser.add_argument('--config', default=str(ROOT / 'config.json'))
     parser.add_argument('--preview', action='store_true', help='Uses search credits; no email or saved history')
     parser.add_argument('--check', action='store_true', help='Validate settings offline')
+    parser.add_argument('--show-queries', action='store_true', help='Print planned web searches without using credits')
     parser.add_argument('--test-email', action='store_true')
     args = parser.parse_args(argv)
     c = load_config(args.config)
     if args.check:
         print(f'Configuration valid; {len(queries(c))} queries planned. Credentials not checked.')
+        return
+    if args.show_queries:
+        for number, query in enumerate(queries(c), 1):
+            print(f'{number}. {query}')
         return
     if args.test_email:
         if args.preview:

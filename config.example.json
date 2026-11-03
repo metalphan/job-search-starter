@@ -1,0 +1,21 @@
+{
+  "roles": ["software engineer"],
+  "candidate_profile": "Replace this with a short summary of your experience and preferences.",
+  "skills": [],
+  "industries": [],
+  "locations": ["New York", "NYC"],
+  "arrangements": ["Remote", "Hybrid", "Onsite"],
+  "remote_region": "United States",
+  "include_unknown_location": false,
+  "exclude_terms": [],
+  "minimum_annual_salary": null,
+  "salary_currency": "USD",
+  "include_unknown_salary": true,
+  "queries": [],
+  "company_domains": [],
+  "max_queries": 12,
+  "max_results_per_query": 10,
+  "output_format": "xlsx",
+  "email_provider": "gmail",
+  "ai_model": "claude-haiku-4-5"
+}

@@ -1,0 +1,77 @@
+name: Job Search
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview uses search credits; test-email only tests delivery
+        type: choice
+        options: [preview, test-email, search]
+        default: preview
+  schedule:
+    # Friday 13:17 UTC. Set ENABLE_SCHEDULE=true in repository variables to opt in.
+    - cron: '17 13 * * 5'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: job-search
+  cancel-in-progress: false
+
+jobs:
+  search:
+    # Keep personal settings and persistent results in a private independent copy.
+    if: github.event.repository.private && (github.event_name == 'workflow_dispatch' || vars.ENABLE_SCHEDULE == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Load private settings
+        env:
+          JOB_SEARCH_CONFIG: ${{ secrets.JOB_SEARCH_CONFIG }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          Path('config.json').write_text(os.environ['JOB_SEARCH_CONFIG'], encoding='utf-8')
+          PY
+          python job_search.py --check
+      - name: Run
+        env:
+          MODE: ${{ inputs.mode || 'search' }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
+        run: |
+          case "$MODE" in
+            preview) python job_search.py --preview ;;
+            test-email) python job_search.py --test-email ;;
+            search) python job_search.py ;;
+            *) exit 1 ;;
+          esac
+      - name: Persist delivery history in private repository
+        if: success() && (github.event_name == 'schedule' || inputs.mode == 'search')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f state/history.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update delivered job history"
+            git push
+          fi
+      - name: Save preview and trackers
+        if: success() && inputs.mode != 'test-email'
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-results
+          path: results/
+          retention-days: 7

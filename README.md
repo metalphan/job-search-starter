@@ -63,7 +63,17 @@ Query order is **custom `queries` first, generated role searches second, company
 
 Search uses [Tavily](https://www.tavily.com/); create your own account and API key. Optional [Anthropic](https://console.anthropic.com/) enrichment extracts employer, salary and eligibility details. Without it, the app uses conservative title/location keywords, leaves salary unknown, and cannot reliably distinguish job listings from search pages. Set `include_unknown_salary=false` with a salary minimum only when AI is enabled, otherwise unknown salaries are all excluded.
 
-Searches and AI calls may cost money. Preview also uses those services. Check provider pricing and account limits; no fixed free allowance is assumed. Your queries go to Tavily; when AI is enabled, the profile and retrieved posting text go to Anthropic. Email attachments go through the selected email provider.
+Searches and AI calls may cost money. Preview also uses those services. Your queries go to Tavily; when AI is enabled, the profile and retrieved posting text go to Anthropic. Email attachments go through the selected email provider.
+
+### What a weekly search costs
+
+Prices and included allowances below were checked **November 2026**; verify the linked pricing pages before enabling a paid plan. The default configuration makes at most 12 Tavily searches per run. This script requests **advanced** search, which costs 2 Tavily credits per query. A full run therefore uses at most 24 credits; four weekly runs use at most 96 credits. Tavily currently includes 1,000 credits per month on its free plan. At its pay-as-you-go rate of $0.008 per credit, those 96 credits would cost **$0.77** if they were billed rather than covered by the allowance. Each preview is another search run and can consume up to 24 credits. See [Tavily credits and pricing](https://docs.tavily.com/documentation/api-credits) and [Tavily plans](https://www.tavily.com/pricing).
+
+Anthropic is **optional**. Without `ANTHROPIC_API_KEY`, the script makes no Anthropic calls, so there is no AI charge. With the default `claude-haiku-4-5`, it can call the model once for every distinct search result that has a matching title and passes basic exclusions, even if the result is later rejected. The [Haiku 4.5 API price](https://www.anthropic.com/news/claude-haiku-4-5) is $1 per million input tokens plus $5 per million output tokens. As an illustration, 480 such calls in a month averaging 4,000 input and 200 output tokens would cost about **$2.40**. Actual usage can differ greatly with result volume and posting length; check the Anthropic usage dashboard and set a spending limit in your account if desired.
+
+The script sends one email per successful search. [Resend's free plan](https://resend.com/pricing?product=transactional) currently includes 3,000 transactional emails per month, although you must control and verify a sending domain, which may have its own registration cost. Gmail delivery uses your Gmail account and avoids buying a domain for Resend; account policy and sending limits still apply. [GitHub Actions](https://docs.github.com/en/billing/concepts/product-billing/github-actions) provides an included usage allowance for private repositories, with charges possible beyond it depending on your account and billing settings.
+
+For a low-cost start, leave `ANTHROPIC_API_KEY` unset, keep `max_queries` small, run one preview, and inspect your provider usage before scheduling weekly searches. There is no subscription charge from this repository itself.
 
 Choose one delivery method:
 
